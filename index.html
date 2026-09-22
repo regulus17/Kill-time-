@@ -178,16 +178,56 @@ for (let i = 0; i < 12; i++) {
   scene.add(st);
 }
 
-// ─── ROAD ─────────────────────────────────────────────────────────────────────
+// ─── CROSS INTERSECTION ───────────────────────────────────────────────────────
 const road = box(3.2, 0.08, 11, 0x555566);
 road.position.set(-0.5, 0.06, 2); scene.add(road);
-for (let z = -4; z <= 5; z += 1.5) {
+const crossRoad = box(16, 0.085, 3.2, 0x555566);
+crossRoad.position.set(-0.5, 0.062, 1.0); scene.add(crossRoad);
+// N-S dashes (skip intersection zone z ≈ -0.6 to 2.6)
+for (let z = -3.5; z <= 7; z += 1.5) {
+  if (z > -0.6 && z < 2.6) continue;
   const dash = box(0.12, 0.09, 0.75, 0xEEEE88);
   dash.position.set(-0.5, 0.07, z); scene.add(dash);
+}
+// E-W dashes (skip intersection zone x ≈ -2.2 to 1.2)
+for (let x = -7; x <= 6; x += 1.5) {
+  if (x > -2.3 && x < 1.3) continue;
+  const dash = box(0.75, 0.09, 0.12, 0xEEEE88);
+  dash.position.set(x, 0.075, 1.0); scene.add(dash);
 }
 const kerb1 = box(0.18, 0.14, 11, 0xCCBBAA); kerb1.position.set(1.5, 0.08, 2); scene.add(kerb1);
 const kerb2 = box(0.18, 0.14, 11, 0xCCBBAA); kerb2.position.set(-2.5, 0.08, 2); scene.add(kerb2);
 const sidewalk = box(2.0, 0.1, 11, 0xC8BA9A); sidewalk.position.set(3.0, 0.08, 2); scene.add(sidewalk);
+// Crosswalk stripes N/S of intersection
+[-0.55, 2.55].forEach(cz => {
+  for (let cx = -1.6; cx <= 0.7; cx += 0.38) {
+    const cw = box(0.26, 0.09, 0.52, 0xEEEEEE); cw.position.set(cx, 0.075, cz); scene.add(cw);
+  }
+});
+// Crosswalk stripes E/W of intersection
+[-2.45, 1.45].forEach(cx => {
+  for (let cz = -0.5; cz <= 2.5; cz += 0.38) {
+    const cw = box(0.52, 0.09, 0.26, 0xEEEEEE); cw.position.set(cx, 0.075, cz); scene.add(cw);
+  }
+});
+// Traffic lights at 4 corners
+function makeTrafficLight(px, pz, ry) {
+  const g = new THREE.Group();
+  const post = cyl(0.045, 0.055, 2.5, 5, 0x555555); post.position.y = 1.25; g.add(post);
+  const sigBox = box(0.18, 0.52, 0.18, 0x222222); sigBox.position.y = 2.7; g.add(sigBox);
+  const rMat = new THREE.MeshPhongMaterial({color:0xFF2222,emissive:0xFF0000,emissiveIntensity:0.7,flatShading:true});
+  const yMat = new THREE.MeshPhongMaterial({color:0xFFCC00,emissive:0xDDAA00,emissiveIntensity:0.2,flatShading:true});
+  const gMat = new THREE.MeshPhongMaterial({color:0x44FF44,emissive:0x00BB00,emissiveIntensity:0.3,flatShading:true});
+  [[2.88,rMat],[2.70,yMat],[2.52,gMat]].forEach(([y,m]) => {
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07,6,4), m);
+    bulb.position.set(0, y, 0.1); g.add(bulb);
+  });
+  g.position.set(px, 0.1, pz); g.rotation.y = ry; return g;
+}
+scene.add(makeTrafficLight(-2.2, -0.7,  0));
+scene.add(makeTrafficLight( 1.2, -0.7,  Math.PI));
+scene.add(makeTrafficLight(-2.2,  2.7,  Math.PI * 0.5));
+scene.add(makeTrafficLight( 1.2,  2.7, -Math.PI * 0.5));
 
 // ─── MT. FUJI (realistic low-poly profile via LatheGeometry) ──────────────────
 const fuji = new THREE.Group();
@@ -301,8 +341,39 @@ const signLight = new THREE.Mesh(
 );
 signLight.position.set(0, 2.80, 1.66); lawson.add(signLight);
 
+// ── INTERIOR SHELF PANEL (visible through glass) ──
+function createInteriorTex() {
+  const ic = document.createElement('canvas'); ic.width = 512; ic.height = 256;
+  const ix = ic.getContext('2d');
+  ix.fillStyle = '#F5F5EE'; ix.fillRect(0, 0, 512, 256);
+  ix.fillStyle = '#E4E1D4'; ix.fillRect(0, 212, 512, 44);
+  const cols = ['#E74C3C','#3498DB','#2ECC71','#F39C12','#9B59B6','#E67E22','#1ABC9C','#F06292'];
+  // Bottom shelf board + products
+  ix.fillStyle = '#9A8870'; ix.fillRect(8, 158, 496, 7);
+  for (let i = 0; i < 15; i++) {
+    ix.fillStyle = cols[i % cols.length]; ix.fillRect(10+i*32, 100, 27, 58);
+    ix.fillStyle = 'rgba(255,255,255,0.4)'; ix.fillRect(12+i*32, 102, 9, 11);
+  }
+  // Middle shelf board + products
+  ix.fillStyle = '#9A8870'; ix.fillRect(8, 100, 496, 7);
+  for (let i = 0; i < 15; i++) {
+    ix.fillStyle = cols[(i+4) % cols.length]; ix.fillRect(10+i*32, 52, 27, 48);
+    ix.fillStyle = 'rgba(255,255,255,0.4)'; ix.fillRect(12+i*32, 54, 9, 10);
+  }
+  ix.fillStyle = '#9A8870'; ix.fillRect(8, 52, 496, 6);
+  ix.fillStyle = '#FFFDE7'; ix.fillRect(40, 2, 432, 14);
+  return new THREE.CanvasTexture(ic);
+}
+const interiorMat = new THREE.MeshBasicMaterial({
+  map: createInteriorTex(),
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+});
+const interiorPanel = new THREE.Mesh(new THREE.PlaneGeometry(3.9, 1.75), interiorMat);
+interiorPanel.position.set(0, 1.2, 1.61);
+lawson.add(interiorPanel);
+
 // Glass windows
-const glassMat = new THREE.MeshPhongMaterial({ color: 0x9CD3E8, transparent: true, opacity: 0.55, flatShading: true, shininess: 60 });
+const glassMat = new THREE.MeshPhongMaterial({ color: 0x9CD3E8, transparent: true, opacity: 0.45, flatShading: true, shininess: 60 });
 [[-1.3,1.35,1.64],[0,1.35,1.64],[1.3,1.35,1.64]].forEach(([x,y,z]) => {
   const w = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.8, 0.06), glassMat);
   w.position.set(x,y,z); lawson.add(w);
@@ -334,6 +405,20 @@ scene.add(lawson);
   const b = cyl(0.18, 0.2, 0.6, 6, 0x757575); b.position.set(x, 0.4, z); scene.add(b);
   const bl = cyl(0.22, 0.18, 0.1, 6, 0x424242); bl.position.set(x, 0.75, z); scene.add(bl);
 });
+
+// ─── ATM MACHINE ──────────────────────────────────────────────────────────────
+const atm = new THREE.Group();
+const atmBody = box(0.5, 1.3, 0.35, 0xDDDDCC); atmBody.position.y = 0.65; atm.add(atmBody);
+const atmScreen = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.20, 0.04),
+  new THREE.MeshPhongMaterial({color:0x88CCFF,emissive:0x4499CC,emissiveIntensity:0.55,flatShading:true}));
+atmScreen.position.set(0, 0.84, 0.195); atm.add(atmScreen);
+const atmKeypad = box(0.28, 0.13, 0.04, 0x999988); atmKeypad.position.set(0, 0.57, 0.195); atm.add(atmKeypad);
+const atmSlot = box(0.22, 0.03, 0.04, 0x333322); atmSlot.position.set(0, 0.43, 0.195); atm.add(atmSlot);
+const atmTop = box(0.52, 0.07, 0.37, 0xCCCCBB); atmTop.position.y = 1.335; atm.add(atmTop);
+const atmLogo = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.055, 0.04),
+  new THREE.MeshPhongMaterial({color:0x1A68BE,emissive:0x0D3E88,emissiveIntensity:0.4,flatShading:true}));
+atmLogo.position.set(0, 1.06, 0.2); atm.add(atmLogo);
+atm.position.set(5.2, 0.1, 0.2); scene.add(atm);
 
 // ─── PARKING LOT ──────────────────────────────────────────────────────────────
 const parking = box(5.5, 0.08, 4.2, 0x8E8E9E); parking.position.set(2.8, 0.08, 4.3); scene.add(parking);
@@ -367,33 +452,42 @@ function addVanWheel(x,z) {
 [[-0.55,0.52,1.4],[0.55,0.52,1.4]].forEach(([x,y,z]) => {
   const hl = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.18,0.06),mat(0xFFF9C4,60)); hl.position.set(x,y,z); van.add(hl);
 });
-van.position.set(2.5, 0.1, 4.5); van.rotation.y = Math.PI*0.05; scene.add(van);
+van.scale.set(0.75, 0.75, 0.75); van.position.set(2.5, 0.075, 4.5); van.rotation.y = Math.PI*0.05; scene.add(van);
 
-// ─── RIVER ────────────────────────────────────────────────────────────────────
-// Flat river plane — no vertex deformation, stays within its banks
-const riverGeo = new THREE.PlaneGeometry(22, 2.0, 1, 1);
-
-const riverMat = new THREE.MeshPhongMaterial({
-  color: 0x4AADCA, transparent: true, opacity: 0.82, flatShading: true, shininess: 130
+// ─── HEART-SHAPED LAKE ────────────────────────────────────────────────────────
+const hs = 0.13; // heart scale
+function heartPoints(scale) {
+  const pts = [];
+  for (let i = 0; i <= 80; i++) {
+    const t = (i / 80) * Math.PI * 2;
+    const st = Math.sin(t);
+    const hx = 16 * st * st * st * scale;
+    const hy = (13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t)) * scale;
+    pts.push([hx, hy]);
+  }
+  return pts;
+}
+function makeHeartShape(scale) {
+  const shape = new THREE.Shape();
+  const pts = heartPoints(scale);
+  pts.forEach(([hx,hy], i) => { if(i===0) shape.moveTo(hx,hy); else shape.lineTo(hx,hy); });
+  return shape;
+}
+// Shore (earth)
+const lakeShore = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.22), 8), mat(0x9A8A6A));
+lakeShore.rotation.x = Math.PI / 2; lakeShore.position.set(0, 0.02, -3.6); scene.add(lakeShore);
+// Bed
+const lakeBed = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.05), 8), mat(0x7A9A9A));
+lakeBed.rotation.x = Math.PI / 2; lakeBed.position.set(0, 0.04, -3.6); scene.add(lakeBed);
+// Water surface
+const lakeMat = new THREE.MeshPhongMaterial({
+  color: 0x4AADCA, transparent: true, opacity: 0.85, flatShading: true, shininess: 130
 });
-const riverMesh = new THREE.Mesh(riverGeo, riverMat);
-riverMesh.rotation.x = -Math.PI / 2;
-riverMesh.position.set(0, 0.07, -3.5);
-scene.add(riverMesh);
-
-// River bed (pebble gray visible under water)
-const riverBed = box(22, 0.05, 2.0, 0x7A9A9A);
-riverBed.position.set(0, 0.04, -3.5); scene.add(riverBed);
-
-// River banks — raised earth edges
-const bank1 = box(22, 0.28, 0.5, 0x9A8A6A);
-bank1.position.set(0, 0.14, -2.55); scene.add(bank1);
-const bank2 = box(22, 0.28, 0.5, 0x9A8A6A);
-bank2.position.set(0, 0.14, -4.45); scene.add(bank2);
-
-// Small river rocks
-[[-3.5,0.12,-2.8],[1.2,0.12,-4.2],[-0.8,0.12,-3.1],[2.5,0.12,-3.9]].forEach(([x,y,z]) => {
-  const rock = sph(0.18 + Math.random()*0.12, 5, 4, 0x8A9090);
+const lakeMesh = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs), 8), lakeMat);
+lakeMesh.rotation.x = Math.PI / 2; lakeMesh.position.set(0, 0.07, -3.6); scene.add(lakeMesh);
+// Lakeside rocks
+[[-1.9,0.12,-2.6],[1.6,0.12,-5.1],[-0.5,0.12,-2.2],[2.0,0.12,-3.6],[-1.4,0.12,-5.0]].forEach(([x,y,z]) => {
+  const rock = sph(0.16+Math.random()*0.1, 5, 4, 0x8A9090);
   rock.scale.y = 0.6; rock.position.set(x,y,z); scene.add(rock);
 });
 
@@ -433,8 +527,8 @@ function makeSwan(px, pz, ry) {
   return g;
 }
 
-const swan1 = makeSwan(-2.8, -3.2,  0.9); swan1._isSwan = true; swan1._swanPhase = 0;
-const swan2 = makeSwan( 1.8, -3.75, -0.5); swan2._isSwan = true; swan2._swanPhase = Math.PI;
+const swan1 = makeSwan(-0.6, -3.6,  0.9); swan1._isSwan = true; swan1._swanPhase = 0; swan1.scale.set(0.55, 0.55, 0.55);
+const swan2 = makeSwan( 0.7, -4.2, -0.5); swan2._isSwan = true; swan2._swanPhase = Math.PI; swan2.scale.set(0.55, 0.55, 0.55);
 scene.add(swan1); scene.add(swan2);
 
 // ─── CHERRY BLOSSOM TREES (improved, along river banks) ───────────────────────
@@ -514,30 +608,40 @@ for (let i=-0.15;i<=0.15;i+=0.1) { const gr=box(1.08,0.03,0.13,0x9A6C2A); gr.pos
 const sph2 = box(1.25,0.1,0.18,0x8A6030); sph2.position.set(0,1.73,0); sgn.add(sph2);
 sgn.position.set(1.7,0.1,6.0); sgn.rotation.y=0.15; scene.add(sgn);
 
-// ─── VESPER MOTORCYCLE ────────────────────────────────────────────────────────
-const moto = new THREE.Group();
-const mframe = box(0.32,0.22,1.15,0x1A237E); mframe.position.y=0.5; moto.add(mframe);
-const meng = box(0.36,0.26,0.5,0x222232); meng.position.set(0,0.44,0.1); moto.add(meng);
-const mtank = box(0.3,0.2,0.45,0x283593); mtank.position.set(0,0.66,0.05); moto.add(mtank);
-const mseat = box(0.25,0.1,0.55,0x1A1A2E); mseat.position.set(0,0.73,-0.2); moto.add(mseat);
-const mpad = box(0.22,0.08,0.5,0x333355); mpad.position.set(0,0.78,-0.2); moto.add(mpad);
-const mfl = cyl(0.03,0.035,0.7,4,0xAAAAAA); mfl.position.set(-0.1,0.56,0.6); mfl.rotation.x=0.25; moto.add(mfl);
-const mfr = cyl(0.03,0.035,0.7,4,0xAAAAAA); mfr.position.set(0.1,0.56,0.6); mfr.rotation.x=0.25; moto.add(mfr);
-const mhb = box(0.52,0.05,0.05,0x999999); mhb.position.set(0,0.82,0.52); moto.add(mhb);
-const mhl = sph(0.1,5,4,0xFFF9C4); mhl.position.set(0,0.6,0.66); moto.add(mhl);
-const mtl = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.05),mat(0xFF3333,40)); mtl.position.set(0,0.62,-0.62); moto.add(mtl);
-const mex = cyl(0.04,0.03,0.6,5,0x888888); mex.position.set(0.22,0.38,-0.2); mex.rotation.z=Math.PI/2; moto.add(mex);
-function addMotoWheel(z) {
-  const tor = new THREE.Mesh(new THREE.TorusGeometry(0.27,0.06,5,10),mat(0x1A1A1A));
-  tor.rotation.y=Math.PI/2; tor.position.set(0,0.29,z); moto.add(tor);
-  for(let a=0;a<5;a++) {
-    const sp=cyl(0.012,0.012,0.44,3,0x888888); sp.rotation.z=Math.PI/2;
-    sp.rotation.y=(a/5)*Math.PI*2; sp.position.set(0,0.29,z); moto.add(sp);
+// ─── VESPER MOTORCYCLES (row behind Lawson, Morandi colors) ──────────────────
+const morandiColors = [0xC4AFA0, 0x8FA8A0, 0xA0B4C4, 0xC4C0A0, 0xB4A8C0];
+function makeMoto(bodyColor) {
+  const g = new THREE.Group();
+  const mframe = box(0.32,0.22,1.15,0x444455); mframe.position.y=0.5; g.add(mframe);
+  const meng = box(0.36,0.26,0.5,0x333344); meng.position.set(0,0.44,0.1); g.add(meng);
+  const mtank = box(0.3,0.2,0.45,bodyColor); mtank.position.set(0,0.66,0.05); g.add(mtank);
+  const mseat = box(0.25,0.1,0.55,bodyColor); mseat.position.set(0,0.73,-0.2); g.add(mseat);
+  const mpad = box(0.22,0.08,0.5,0x555566); mpad.position.set(0,0.78,-0.2); g.add(mpad);
+  const mfl = cyl(0.03,0.035,0.7,4,0xAAAAAA); mfl.position.set(-0.1,0.56,0.6); mfl.rotation.x=0.25; g.add(mfl);
+  const mfr = cyl(0.03,0.035,0.7,4,0xAAAAAA); mfr.position.set(0.1,0.56,0.6); mfr.rotation.x=0.25; g.add(mfr);
+  const mhb = box(0.52,0.05,0.05,0x999999); mhb.position.set(0,0.82,0.52); g.add(mhb);
+  const mhl = sph(0.1,5,4,0xFFF9C4); mhl.position.set(0,0.6,0.66); g.add(mhl);
+  const mtl = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.05),mat(0xFF3333,40)); mtl.position.set(0,0.62,-0.62); g.add(mtl);
+  const mex = cyl(0.04,0.03,0.6,5,0x888888); mex.position.set(0.22,0.38,-0.2); mex.rotation.z=Math.PI/2; g.add(mex);
+  function addWheel(z) {
+    const tor = new THREE.Mesh(new THREE.TorusGeometry(0.27,0.06,5,10),mat(0x1A1A1A));
+    tor.rotation.y=Math.PI/2; tor.position.set(0,0.29,z); g.add(tor);
+    for(let a=0;a<5;a++) {
+      const sp=cyl(0.012,0.012,0.44,3,0x888888); sp.rotation.z=Math.PI/2;
+      sp.rotation.y=(a/5)*Math.PI*2; sp.position.set(0,0.29,z); g.add(sp);
+    }
+    const hub=cyl(0.06,0.06,0.16,6,0x777777); hub.rotation.z=Math.PI/2; hub.position.set(0,0.29,z); g.add(hub);
   }
-  const hub=cyl(0.06,0.06,0.16,6,0x777777); hub.rotation.z=Math.PI/2; hub.position.set(0,0.29,z); moto.add(hub);
+  addWheel(0.58); addWheel(-0.58);
+  return g;
 }
-addMotoWheel(0.58); addMotoWheel(-0.58);
-moto.position.set(-1.2,0.1,4.8); moto.rotation.y=-0.6; scene.add(moto);
+// Row of 5 motos behind Lawson (Lawson back wall at world z ≈ -2.4)
+morandiColors.forEach((col, i) => {
+  const m = makeMoto(col);
+  m.position.set(1.2 + i * 0.82, 0.1, -3.1);
+  m.rotation.y = Math.PI; // facing away from store
+  scene.add(m);
+});
 
 // ─── STREET LAMPS ─────────────────────────────────────────────────────────────
 function makeLamp(px,pz,rot=0) {
@@ -703,8 +807,8 @@ function animate() {
     rainPoints.geometry.attributes.position.needsUpdate = true;
   }
 
-  // River ripple (subtle opacity pulse + surface shimmer via material)
-  riverMat.opacity = 0.80 + Math.sin(tick * 0.04) * 0.04;
+  // Lake ripple (subtle opacity pulse)
+  lakeMat.opacity = 0.83 + Math.sin(tick * 0.04) * 0.04;
 
   // Swans gently bob
   scene.children.forEach(c => {

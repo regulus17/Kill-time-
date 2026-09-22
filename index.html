@@ -455,8 +455,8 @@ function makeTree(px, pz) {
   const g = new THREE.Group();
   const pc = () => pinks[Math.floor(rng() * pinks.length)];
 
-  // Root flare
-  const rf = cyl(0.28, 0.36, 0.36, 6, 0x5C3E10); rf.position.y = 0.18; g.add(rf);
+  // Root flare — center at 0.12 so bottom is at -0.06 (roots sink into soil)
+  const rf = cyl(0.28, 0.36, 0.36, 6, 0x5C3E10); rf.position.y = 0.12; g.add(rf);
 
   // Main trunk
   const trunk = cyl(0.10, 0.22, 2.3, 6, 0x7A5015); trunk.position.y = 1.25; g.add(trunk);
@@ -505,7 +505,7 @@ function makeTree(px, pz) {
     hc.position.set(bx, by, bz); g.add(hc);
   });
 
-  g.position.set(px, 0.1, pz);
+  g.position.set(px, 0.0, pz);
   return g;
 }
 

@@ -76,7 +76,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x87CEEB, 22, 65);
+scene.fog = new THREE.Fog(0x87CEEB, 32, 95);
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 500);
 camera.position.set(14, 9, 18);
@@ -107,51 +107,61 @@ function sph(r, ws, hs, color) {
   m.castShadow = true; m.receiveShadow = true; return m;
 }
 
-// ─── SKY DOME ─────────────────────────────────────────────────────────────────
-const skyDomeMat = new THREE.MeshBasicMaterial({ color: 0x87CEEB, side: THREE.BackSide });
-const skyDome = new THREE.Mesh(new THREE.SphereGeometry(200, 16, 12), skyDomeMat);
+// ─── SKY DOME with CANVAS CLOUDS ─────────────────────────────────────────────
+const SKY_W = 1024, SKY_H = 512;
+const skyCanvas = document.createElement('canvas');
+skyCanvas.width = SKY_W; skyCanvas.height = SKY_H;
+const skyCtx = skyCanvas.getContext('2d');
+const skyTex = new THREE.CanvasTexture(skyCanvas);
+skyTex.wrapS = THREE.RepeatWrapping;
+
+const skyDomeMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide });
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(200, 32, 16), skyDomeMat);
 scene.add(skyDome);
 
-// ─── DYNAMIC CLOUDS (always present, color/density changes per weather) ───────
-const allCloudMats = [];
+let cloudOffset = 0;
+let currentWeather = 'sunny';
 
-function buildCloudMesh(scale, color) {
-  const g = new THREE.Group();
-  const blobs = [
-    [0,    0,    0,    1.00],
-    [1.15, 0.20, 0.10, 0.85],
-    [-1.05,0.15,-0.05, 0.82],
-    [0.55, 0.55, 0.15, 0.72],
-    [-0.50,0.48,-0.10, 0.68],
-    [0.12, 0.82, 0.05, 0.58],
-    [1.90, 0.02, 0,    0.60],
-    [-1.80,0.08, 0,    0.56],
-    [0.85,-0.10, 0.2,  0.55],
-    [-0.85,-0.08,-0.2, 0.52],
+const skyPalette = {
+  sunny:  { top:[88,172,235],  mid:[148,208,248], horizon:[195,228,252], cloud:[255,255,255], cloudA:0.80 },
+  cloudy: { top:[118,136,165], mid:[150,165,185], horizon:[178,190,205], cloud:[208,215,222], cloudA:0.88 },
+  rainy:  { top:[ 55, 80, 98], mid:[ 78,105,122], horizon:[105,128,145], cloud:[115,128,138], cloudA:0.94 },
+};
+
+function drawSky() {
+  const p = skyPalette[currentWeather];
+  const w = SKY_W, h = SKY_H;
+  const grd = skyCtx.createLinearGradient(0, 0, 0, h);
+  const [tr,tg,tb]=p.top, [mr,mg,mb]=p.mid, [hr,hg,hb]=p.horizon;
+  grd.addColorStop(0,    `rgb(${tr},${tg},${tb})`);
+  grd.addColorStop(0.55, `rgb(${mr},${mg},${mb})`);
+  grd.addColorStop(1,    `rgb(${hr},${hg},${hb})`);
+  skyCtx.fillStyle = grd; skyCtx.fillRect(0, 0, w, h);
+  const clouds = [
+    {nx:0.07,ny:0.20,s:0.074},{nx:0.25,ny:0.12,s:0.058},
+    {nx:0.43,ny:0.23,s:0.082},{nx:0.61,ny:0.14,s:0.066},
+    {nx:0.78,ny:0.21,s:0.076},{nx:0.94,ny:0.10,s:0.054},
+    {nx:1.07,ny:0.20,s:0.074},{nx:1.25,ny:0.12,s:0.058},
   ];
-  blobs.forEach(([bx,by,bz,s]) => {
-    const m = new THREE.MeshPhongMaterial({ color, flatShading: true });
-    allCloudMats.push(m);
-    const blob = new THREE.Mesh(new THREE.SphereGeometry(s * scale, 5, 4), m);
-    blob.position.set(bx * scale * 1.1, by * scale, bz * scale * 0.6);
-    g.add(blob);
+  const [cr,cg,cb]=p.cloud, a=p.cloudA;
+  clouds.forEach(c => {
+    const cx = ((c.nx + cloudOffset) % 1.14 - 0.07) * w;
+    const cy = c.ny * h, sz = c.s * w;
+    if (cx + sz*1.7 < 0 || cx - sz*1.7 > w) return;
+    [[0,0,sz],[sz*.68,-sz*.22,sz*.74],[-sz*.62,-sz*.11,sz*.68],
+     [sz*.34,-sz*.46,sz*.60],[-sz*.28,-sz*.40,sz*.56],
+     [sz*1.32,sz*.04,sz*.50],[-sz*1.15,sz*.07,sz*.46]].forEach(([bx,by,r]) => {
+      const g2 = skyCtx.createRadialGradient(cx+bx,cy+by,0,cx+bx,cy+by,r);
+      g2.addColorStop(0,    `rgba(${cr},${cg},${cb},${a.toFixed(2)})`);
+      g2.addColorStop(0.45, `rgba(${cr},${cg},${cb},${(a*.48).toFixed(2)})`);
+      g2.addColorStop(1,    `rgba(${cr},${cg},${cb},0)`);
+      skyCtx.fillStyle = g2; skyCtx.beginPath();
+      skyCtx.arc(cx+bx,cy+by,r,0,Math.PI*2); skyCtx.fill();
+    });
   });
-  return g;
+  skyTex.needsUpdate = true;
 }
-
-const cloudData = [
-  { group: buildCloudMesh(1.7, 0xFFFFFF), speed: 0.00038, amp: 3.2, phase: 0.0,  baseX: -9,  y: 9.5,  z: -11 },
-  { group: buildCloudMesh(1.4, 0xFFFFFF), speed: 0.00030, amp: 2.8, phase: 1.3,  baseX:  5,  y: 11.0, z: -13 },
-  { group: buildCloudMesh(1.2, 0xFFFFFF), speed: 0.00048, amp: 2.0, phase: 2.5,  baseX: -2,  y: 10.5, z: -9  },
-  { group: buildCloudMesh(1.5, 0xFFFFFF), speed: 0.00034, amp: 3.0, phase: 0.9,  baseX: 11,  y: 9.8,  z: -10 },
-  { group: buildCloudMesh(1.1, 0xFFFFFF), speed: 0.00044, amp: 1.8, phase: 3.7,  baseX:-13,  y: 10.0, z: -7  },
-  { group: buildCloudMesh(1.6, 0xFFFFFF), speed: 0.00036, amp: 3.5, phase: 1.7,  baseX:  3,  y: 9.0,  z: -15 },
-  { group: buildCloudMesh(1.0, 0xFFFFFF), speed: 0.00042, amp: 2.2, phase: 4.1,  baseX:  8,  y: 11.5, z: -6  },
-];
-cloudData.forEach(d => {
-  d.group.position.set(d.baseX, d.y, d.z);
-  scene.add(d.group);
-});
+drawSky();
 
 // ─── GROUND PLATFORM ──────────────────────────────────────────────────────────
 const platform = cyl(13.5, 14, 0.7, 8, 0x8FAE7A);
@@ -281,11 +291,11 @@ lavaBase.position.y = -0.6; fuji.add(lavaBase);
 
 // Push mountain far into background — base radius 9.4 so at z=-16
 // the front edge is at z=-6.6, well clear of the river at z=-3.5
-fuji.position.set(-3, 0, -16);
+fuji.position.set(-4, 0, -24);
 scene.add(fuji);
 
 // Foothills — repositioned to flank the mountain in the background
-[[-6, -12, 0x7A7A82], [-10, -11, 0x8A8A92], [-1, -13, 0x6E6E78], [-11, -13, 0x828288]].forEach(([x,z,c]) => {
+[[-7, -18, 0x7A7A82], [-12, -17, 0x8A8A92], [-2, -19, 0x6E6E78], [-14, -19, 0x828288]].forEach(([x,z,c]) => {
   const h = sph(2.2, 5, 3, c);
   h.position.set(x, -0.3, z); h.scale.y = 0.45;
   scene.add(h);
@@ -427,35 +437,9 @@ for (let i = 0; i < 4; i++) {
 }
 const stopLine = box(5.4, 0.09, 0.1, 0xEEEEEE); stopLine.position.set(2.8, 0.09, 2.3); scene.add(stopLine);
 
-// ─── MINIVAN ──────────────────────────────────────────────────────────────────
-const van = new THREE.Group();
-const chassis = box(1.65, 0.2, 3.6, 0x333344); chassis.position.y = 0.18; van.add(chassis);
-const vanBody = box(1.6, 0.78, 3.5, 0xFF8F00); vanBody.position.y = 0.57; van.add(vanBody);
-const cabin = box(1.5, 0.65, 2.6, 0xFFA000); cabin.position.set(0, 1.11, -0.2); van.add(cabin);
-const hood = box(1.4, 0.3, 0.55, 0xFF8F00); hood.position.set(0, 0.86, 1.1); hood.rotation.x = 0.5; van.add(hood);
-const wshield = new THREE.Mesh(new THREE.BoxGeometry(1.3,0.45,0.06),
-  new THREE.MeshPhongMaterial({color:0x9CBDCC,transparent:true,opacity:0.5,flatShading:true}));
-wshield.position.set(0,1.16,1.12); wshield.rotation.x=0.55; van.add(wshield);
-const vanGlass = new THREE.MeshPhongMaterial({color:0x9CBDCC,transparent:true,opacity:0.45,flatShading:true});
-[-0.82,0.82].forEach(x => {
-  const sw = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.45,1.8),vanGlass);
-  sw.position.set(x,1.1,-0.05); van.add(sw);
-});
-const seam = box(1.62,0.78,0.06,0xDD7A00); seam.position.set(0,0.57,-1.72); van.add(seam);
-function addVanWheel(x,z) {
-  const t = new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.26,0.22,9),mat(0x1A1A1A));
-  t.rotation.z = Math.PI/2; t.position.set(x,0.28,z); van.add(t);
-  const r = new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.24,8),mat(0xBBBBBB));
-  r.rotation.z = Math.PI/2; r.position.set(x,0.28,z); van.add(r);
-}
-[[0.92,1.1],[-0.92,1.1],[0.92,-1.1],[-0.92,-1.1]].forEach(([x,z]) => addVanWheel(x,z));
-[[-0.55,0.52,1.4],[0.55,0.52,1.4]].forEach(([x,y,z]) => {
-  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.18,0.06),mat(0xFFF9C4,60)); hl.position.set(x,y,z); van.add(hl);
-});
-van.scale.set(0.75, 0.75, 0.75); van.position.set(2.5, 0.075, 4.5); van.rotation.y = Math.PI*0.05; scene.add(van);
 
 // ─── HEART-SHAPED LAKE ────────────────────────────────────────────────────────
-const hs = 0.13; // heart scale
+const hs = 0.22; // heart scale
 function heartPoints(scale) {
   const pts = [];
   for (let i = 0; i <= 80; i++) {
@@ -473,21 +457,21 @@ function makeHeartShape(scale) {
   pts.forEach(([hx,hy], i) => { if(i===0) shape.moveTo(hx,hy); else shape.lineTo(hx,hy); });
   return shape;
 }
-// Shore (earth)
-const lakeShore = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.22), 8), mat(0x9A8A6A));
-lakeShore.rotation.x = Math.PI / 2; lakeShore.position.set(0, 0.02, -3.6); scene.add(lakeShore);
+// Shore (earth) — rotation.x = -π/2 so ShapeGeometry normal points UP (+Y)
+const lakeShore = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.22), 10), mat(0x9A8A6A));
+lakeShore.rotation.x = -Math.PI / 2; lakeShore.position.set(0, 0.02, -8); scene.add(lakeShore);
 // Bed
-const lakeBed = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.05), 8), mat(0x7A9A9A));
-lakeBed.rotation.x = Math.PI / 2; lakeBed.position.set(0, 0.04, -3.6); scene.add(lakeBed);
+const lakeBed = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.05), 10), mat(0x7A9A9A));
+lakeBed.rotation.x = -Math.PI / 2; lakeBed.position.set(0, 0.04, -8); scene.add(lakeBed);
 // Water surface
 const lakeMat = new THREE.MeshPhongMaterial({
-  color: 0x4AADCA, transparent: true, opacity: 0.85, flatShading: true, shininess: 130
+  color: 0x3FA8D0, transparent: true, opacity: 0.88, flatShading: true, shininess: 150
 });
-const lakeMesh = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs), 8), lakeMat);
-lakeMesh.rotation.x = Math.PI / 2; lakeMesh.position.set(0, 0.07, -3.6); scene.add(lakeMesh);
+const lakeMesh = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs), 10), lakeMat);
+lakeMesh.rotation.x = -Math.PI / 2; lakeMesh.position.set(0, 0.07, -8); scene.add(lakeMesh);
 // Lakeside rocks
-[[-1.9,0.12,-2.6],[1.6,0.12,-5.1],[-0.5,0.12,-2.2],[2.0,0.12,-3.6],[-1.4,0.12,-5.0]].forEach(([x,y,z]) => {
-  const rock = sph(0.16+Math.random()*0.1, 5, 4, 0x8A9090);
+[[-4.0,0.12,-7.4],[3.5,0.12,-9.0],[-0.8,0.12,-5.0],[2.2,0.12,-6.5],[-2.5,0.12,-10.5],[1.0,0.12,-10.8]].forEach(([x,y,z]) => {
+  const rock = sph(0.20+Math.random()*0.12, 5, 4, 0x8A9090);
   rock.scale.y = 0.6; rock.position.set(x,y,z); scene.add(rock);
 });
 
@@ -527,8 +511,8 @@ function makeSwan(px, pz, ry) {
   return g;
 }
 
-const swan1 = makeSwan(-0.6, -3.6,  0.9); swan1._isSwan = true; swan1._swanPhase = 0; swan1.scale.set(0.55, 0.55, 0.55);
-const swan2 = makeSwan( 0.7, -4.2, -0.5); swan2._isSwan = true; swan2._swanPhase = Math.PI; swan2.scale.set(0.55, 0.55, 0.55);
+const swan1 = makeSwan(-0.9, -7.5,  0.9); swan1._isSwan = true; swan1._swanPhase = 0; swan1.scale.set(0.55, 0.55, 0.55);
+const swan2 = makeSwan( 1.0, -8.8, -0.5); swan2._isSwan = true; swan2._swanPhase = Math.PI; swan2.scale.set(0.55, 0.55, 0.55);
 scene.add(swan1); scene.add(swan2);
 
 // ─── CHERRY BLOSSOM TREES (improved, along river banks) ───────────────────────
@@ -593,10 +577,10 @@ function makeTree(px, pz) {
   return g;
 }
 
-// Trees along both river banks
+// Cherry trees around the heart lake (center 0, -8)
 [
-  [-5.0,-2.2],[-3.2,-2.0],[-1.2,-2.1],[0.8,-2.0],[2.8,-2.2],[4.6,-2.1],  // north bank
-  [-4.5,-4.8],[-2.5,-5.0],[-0.5,-4.8],[1.5,-5.1],[3.5,-4.9],[5.5,-4.8],  // south bank
+  [-4.5,-7.2],[-4.0,-10.5],[-2.0,-11.5],[0,-12.5],[2.0,-11.5],[4.0,-10.5],[4.5,-7.2],
+  [3.2,-5.5],[0.8,-5.0],[-0.8,-5.0],[-3.2,-5.5],[0,-13.0],
 ].forEach(([x,z]) => scene.add(makeTree(x, z)));
 
 // ─── WOODEN SIGN ──────────────────────────────────────────────────────────────
@@ -635,11 +619,11 @@ function makeMoto(bodyColor) {
   addWheel(0.58); addWheel(-0.58);
   return g;
 }
-// Row of 5 motos behind Lawson (Lawson back wall at world z ≈ -2.4)
+// Row of 5 motos in front of Lawson (parking, facing road)
 morandiColors.forEach((col, i) => {
   const m = makeMoto(col);
-  m.position.set(1.2 + i * 0.82, 0.1, -3.1);
-  m.rotation.y = Math.PI; // facing away from store
+  m.position.set(0.9 + i * 0.82, 0.1, 3.2);
+  m.rotation.y = Math.PI; // facing toward road
   scene.add(m);
 });
 
@@ -719,21 +703,18 @@ scene.add(petals);
 // ─── WEATHER SYSTEM ───────────────────────────────────────────────────────────
 const W = {
   sunny: {
-    sky:0x87CEEB, fogColor:0x87CEEB, fogNear:22, fogFar:65,
+    sky:0xC0DFF5, fogColor:0x87CEEB, fogNear:32, fogFar:95,
     ambInt:0.55, ambColor:0xFFFFFF, sunInt:1.3, sunColor:0xFFF8E7,
-    cloudColor:0xFFFFFF, cloudOpacity:1.0,
     rain:false, puddles:false, petalAlpha:1.0,
   },
   cloudy: {
-    sky:0xA0AABA, fogColor:0xA0AABA, fogNear:14, fogFar:42,
+    sky:0xB0BCC8, fogColor:0xA0AABA, fogNear:22, fogFar:60,
     ambInt:0.75, ambColor:0xCCCCDD, sunInt:0.45, sunColor:0xD8D8E8,
-    cloudColor:0xC8C8D0, cloudOpacity:1.0,
     rain:false, puddles:false, petalAlpha:0.55,
   },
   rainy: {
-    sky:0x4A5F6A, fogColor:0x4E6070, fogNear:8, fogFar:30,
+    sky:0x4A5F6A, fogColor:0x4E6070, fogNear:12, fogFar:40,
     ambInt:0.45, ambColor:0xAABBCC, sunInt:0.15, sunColor:0xB0C0CC,
-    cloudColor:0x7A8A90, cloudOpacity:1.0,
     rain:true, puddles:true, petalAlpha:0.15,
   }
 };
@@ -741,7 +722,7 @@ const W = {
 function setWeather(name) {
   const s = W[name];
   renderer.setClearColor(s.sky);
-  skyDomeMat.color.setHex(s.sky);
+  currentWeather = name; drawSky();
   scene.fog.color.setHex(s.fogColor);
   scene.fog.near = s.fogNear;
   scene.fog.far  = s.fogFar;
@@ -749,8 +730,6 @@ function setWeather(name) {
   ambLight.color.setHex(s.ambColor);
   sunLight.intensity = s.sunInt;
   sunLight.color.setHex(s.sunColor);
-  // update all cloud materials
-  allCloudMats.forEach(m => m.color.setHex(s.cloudColor));
   rainPoints.visible = s.rain;
   puddle1.visible = s.puddles;
   puddle2.visible = s.puddles;
@@ -770,11 +749,8 @@ function animate() {
   tick++;
   controls.update();
 
-  // Clouds always drift
-  cloudData.forEach(d => {
-    d.group.position.x = d.baseX + Math.sin(tick * d.speed + d.phase) * d.amp;
-    d.group.position.y = d.y + Math.sin(tick * d.speed * 1.3 + d.phase) * 0.15;
-  });
+  // Animate sky clouds every 2 frames
+  if (tick % 2 === 0) { cloudOffset += 0.000135; drawSky(); }
 
   // Petals
   const pp = petals.geometry.attributes.position.array;

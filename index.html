@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Fuji Lawson Diorama</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #87CEEB; }
+  #c { display: block; width: 100%; height: 100%; }
+
+  #ui {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px;
+  }
+
+  #header {
+    display: flex;
+    justify-content: center;
+  }
+
+  .title-badge {
+    pointer-events: none;
+    background: rgba(255,255,255,0.18);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 30px;
+    padding: 8px 20px;
+    color: #fff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    white-space: nowrap;
+  }
+
+  #weather-bar {
+    pointer-events: auto;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .wbtn {
+    border: none;
+    border-radius: 24px;
+    padding: 10px 22px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  }
+  .wbtn:hover { transform: translateY(-2px); box-shadow: 0 5px 14px rgba(0,0,0,0.22); }
+  .wbtn:active { transform: translateY(0); }
+  .wbtn.active { outline: 3px solid #fff; outline-offset: 2px; }
+
+  #w-sunny  { background: #FFD93D; color: #7A4E00; }
+  #w-cloudy { background: #90A4AE; color: #1A2E35; }
+  #w-rainy  { background: #455A64; color: #E0F2F1; }
+
+  #hint {
+    pointer-events: none;
+    text-align: center;
+    color: rgba(255,255,255,0.75);
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    margin-top: 6px;
+  }
+
+  @media (max-width: 480px) {
+    .title-badge { font-size: 11px; letter-spacing: 1.5px; padding: 7px 14px; }
+    .wbtn { padding: 9px 16px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div id="header">
+    <div class="title-badge">LAWSON × FUJI &nbsp;｜&nbsp; ローポリジオラマ</div>
+  </div>
+  <div>
+    <div id="weather-bar">
+      <button class="wbtn active" id="w-sunny"  onclick="setWeather('sunny')">☀️ 晴れ</button>
+      <button class="wbtn"        id="w-cloudy" onclick="setWeather('cloudy')">☁️ 曇り</button>
+      <button class="wbtn"        id="w-rainy"  onclick="setWeather('rainy')">🌧️ 雨</button>
+    </div>
+    <div id="hint">drag to rotate · scroll to zoom</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.min.js"></script>
+<script>
+'use strict';
+
+// ── Renderer ──────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// ── Scene & Camera ────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x87CEEB, 22, 65);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(14, 9, 18);
+camera.lookAt(0, 1.5, 0);
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance   = 5;
+controls.maxDistance   = 45;
+controls.maxPolarAngle = Math.PI / 2.05;
+controls.target.set(0, 1.5, 0);
+
+// ── Material helpers ──────────────────────────────────────────────────────────
+function mat(color, shininess = 15) {
+  return new THREE.MeshPhongMaterial({ color, flatShading: true, shininess });
+}
+function box(w, h, d, color, opts = {}) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, opts.shine || 15));
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+function cyl(rt, rb, h, segs, color, opts = {}) {
+  const m = new THREE.Mesh(
+    new THREE.CylinderGeometry(rt, rb, h, segs),
+    mat(color, opts.shine || 15)
+  );
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+function sphere(r, ws, hs, color) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs), mat(color));
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GROUND PLATFORM  (octagonal base like a display stand)
+// ═══════════════════════════════════════════════════════════════════════════════
+const platform = cyl(13.5, 14, 0.7, 8, 0x8FAE7A);
+platform.position.y = -0.35;
+scene.add(platform);
+
+const platformRim = cyl(14.2, 14.5, 0.4, 8, 0x6D8A5E);
+platformRim.position.y = -0.7;
+scene.add(platformRim);
+
+const base = cyl(14.5, 14.5, 0.25, 8, 0x556B4A);
+base.position.y = -0.92;
+scene.add(base);
+
+// Grass surface
+const grass = cyl(13.2, 13.2, 0.12, 8, 0x9DC47A);
+grass.position.y = 0.0;
+scene.add(grass);
+
+// ── Path / Road ───────────────────────────────────────────────────────────────
+const road = box(3.2, 0.08, 11, 0x555566);
+road.position.set(-0.5, 0.06, 2);
+scene.add(road);
+
+// Road centre dashes
+for (let z = -4; z <= 5; z += 1.5) {
+  const dash = box(0.12, 0.09, 0.75, 0xEEEE88);
+  dash.position.set(-0.5, 0.07, z);
+  scene.add(dash);
+}
+
+// Kerb
+const kerb = box(0.18, 0.14, 11, 0xCCBBAA);
+kerb.position.set(1.5, 0.08, 2);
+scene.add(kerb);
+const kerb2 = box(0.18, 0.14, 11, 0xCCBBAA);
+kerb2.position.set(-2.5, 0.08, 2);
+scene.add(kerb2);
+
+// Sidewalk
+const sidewalk = box(2.0, 0.1, 11, 0xC8BA9A);
+sidewalk.position.set(3.0, 0.08, 2);
+scene.add(sidewalk);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MT. FUJI
+// ═══════════════════════════════════════════════════════════════════════════════
+const fuji = new THREE.Group();
+
+// Lower lava/rock skirt
+const skirt = cyl(6.5, 7.5, 1.5, 7, 0x5A4F44);
+skirt.position.y = 0.75;
+fuji.add(skirt);
+
+// Main body
+const fujiBody = cyl(0.3, 6.2, 8.5, 7, 0x7D6E5F);
+fujiBody.position.y = 5.75;
+fuji.add(fujiBody);
+
+// Mid snow band
+const snowBand = new THREE.Mesh(
+  new THREE.CylinderGeometry(2.6, 4.2, 1.0, 7),
+  mat(0xDEDEDE)
+);
+snowBand.position.y = 7.0;
+fuji.add(snowBand);
+
+// Snow cap
+const snowCap = cyl(0.01, 2.4, 2.2, 7, 0xF5F5F5);
+snowCap.position.y = 9.2;
+fuji.add(snowCap);
+
+// Crater hint
+const crater = cyl(0.25, 0.2, 0.15, 6, 0x2A2018);
+crater.position.y = 10.2;
+fuji.add(crater);
+
+fuji.position.set(-5.5, 0, -9);
+fuji.scale.set(0.95, 0.95, 0.95);
+scene.add(fuji);
+
+// Foothills
+[[-3, -6.5], [-8, -5], [-1.5, -7.5], [-9.5, -7]].forEach(([x, z], i) => {
+  const h = sphere(2 - i * 0.15, 5, 3, [0x6A7A5A, 0x7A8A6A, 0x5E6E4E, 0x688060][i]);
+  h.position.set(x, -0.3, z);
+  h.scale.y = 0.45;
+  scene.add(h);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAWSON CONVENIENCE STORE
+// ═══════════════════════════════════════════════════════════════════════════════
+const lawson = new THREE.Group();
+
+// Main building body
+const bldg = box(4.2, 2.8, 3.2, 0xEDEDED);
+bldg.position.y = 1.4;
+lawson.add(bldg);
+
+// Roof
+const roof = box(4.4, 0.22, 3.4, 0x1455A4);
+roof.position.y = 2.91;
+lawson.add(roof);
+
+// Roof overhang
+const overhang = box(5.0, 0.15, 4.0, 0x0D3E88);
+overhang.position.y = 2.65;
+lawson.add(overhang);
+
+// Front blue stripe (lower)
+const stripe = box(4.22, 0.95, 0.06, 0x1A68BE);
+stripe.position.set(0, 0.98, 1.63);
+lawson.add(stripe);
+
+// Signage background
+const signBg = box(2.4, 0.62, 0.08, 0x0D3E88);
+signBg.position.set(0, 2.35, 1.64);
+lawson.add(signBg);
+
+// Signage text bar
+const signTxt = box(2.15, 0.38, 0.09, 0xFFFFFF);
+signTxt.position.set(0, 2.35, 1.65);
+lawson.add(signTxt);
+
+// Lawson L logo hint (blue square on sign)
+const logo = box(0.28, 0.28, 0.10, 0x1A68BE);
+logo.position.set(-0.85, 2.35, 1.66);
+lawson.add(logo);
+
+// Glass windows
+const glassMat = new THREE.MeshPhongMaterial({
+  color: 0x9CD3E8, transparent: true, opacity: 0.55,
+  flatShading: true, shininess: 60
+});
+[[-1.3, 1.35, 1.64], [0, 1.35, 1.64], [1.3, 1.35, 1.64]].forEach(([x, y, z]) => {
+  const win = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.8, 0.06), glassMat);
+  win.position.set(x, y, z);
+  lawson.add(win);
+});
+
+// Door (automatic, glass)
+const door = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.6, 0.06),
+  new THREE.MeshPhongMaterial({ color: 0xB8DDEF, transparent: true, opacity: 0.45, flatShading: true, shininess: 80 }));
+door.position.set(0, 0.8, 1.64);
+lawson.add(door);
+
+// Side wall windows
+[[-2.14, 1.3, 0], [-2.14, 1.3, 0.8]].forEach(([x, y, z]) => {
+  const sw = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.65, 0.65), glassMat);
+  sw.position.set(x, y, z);
+  lawson.add(sw);
+});
+
+// A/C unit on roof
+const ac = box(0.7, 0.3, 0.5, 0xCCCCCC);
+ac.position.set(1.5, 3.1, 0);
+lawson.add(ac);
+
+// Entrance canopy
+const canopy = box(3.2, 0.12, 1.2, 0x1455A4);
+canopy.position.set(0, 2.62, 2.2);
+lawson.add(canopy);
+
+// Entrance canopy stripes
+for (let x = -1.2; x <= 1.2; x += 0.4) {
+  const cs = box(0.12, 0.13, 1.2, 0xFFFFFF);
+  cs.position.set(x, 2.62, 2.2);
+  lawson.add(cs);
+}
+
+lawson.position.set(2.8, 0.1, -0.8);
+scene.add(lawson);
+
+// ── Vending Machines ──────────────────────────────────────────────────────────
+[[0xD32F2F, 4.9, -0.5], [0x1565C0, 5.55, -0.5], [0x2E7D32, 6.2, -0.5]].forEach(([c, x, z]) => {
+  const vm = box(0.55, 1.35, 0.45, c);
+  vm.position.set(x, 0.78, z);
+  scene.add(vm);
+  const vmFace = box(0.56, 0.5, 0.46, 0x111111);
+  vmFace.position.set(x, 1.1, z);
+  scene.add(vmFace);
+  const screen = box(0.57, 0.28, 0.47, 0xCCEEFF);
+  screen.position.set(x, 1.1, z);
+  scene.add(screen);
+});
+
+// ── Trash Bins ────────────────────────────────────────────────────────────────
+[[4.9, 0.35], [5.45, 0.35]].forEach(([x, z]) => {
+  const binBody = cyl(0.18, 0.2, 0.6, 6, 0x757575);
+  binBody.position.set(x, 0.4, z);
+  scene.add(binBody);
+  const binLid = cyl(0.22, 0.18, 0.1, 6, 0x424242);
+  binLid.position.set(x, 0.75, z);
+  scene.add(binLid);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PARKING LOT
+// ═══════════════════════════════════════════════════════════════════════════════
+const parking = box(5.5, 0.08, 4.2, 0x8E8E9E);
+parking.position.set(2.8, 0.08, 4.3);
+scene.add(parking);
+
+// Parking lines
+for (let i = 0; i < 4; i++) {
+  const ln = box(0.07, 0.09, 4.1, 0xEEEEEE);
+  ln.position.set(0.3 + i * 1.5, 0.09, 4.3);
+  scene.add(ln);
+}
+const stopLine = box(5.4, 0.09, 0.1, 0xEEEEEE);
+stopLine.position.set(2.8, 0.09, 2.3);
+scene.add(stopLine);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MINIVAN
+// ═══════════════════════════════════════════════════════════════════════════════
+const van = new THREE.Group();
+
+// Underbody
+const chassis = box(1.65, 0.2, 3.6, 0x333344);
+chassis.position.y = 0.18;
+van.add(chassis);
+
+// Main body
+const vanBody = box(1.6, 0.78, 3.5, 0xFF8F00);
+vanBody.position.y = 0.57;
+van.add(vanBody);
+
+// Upper cabin (shorter toward front)
+const cabin = box(1.5, 0.65, 2.6, 0xFFA000);
+cabin.position.set(0, 1.11, -0.2);
+van.add(cabin);
+
+// Front slope
+const hood = box(1.4, 0.3, 0.55, 0xFF8F00);
+hood.position.set(0, 0.86, 1.1);
+hood.rotation.x = 0.5;
+van.add(hood);
+
+// Windshield
+const windshield = new THREE.Mesh(
+  new THREE.BoxGeometry(1.3, 0.45, 0.06),
+  new THREE.MeshPhongMaterial({ color: 0x9CBDCC, transparent: true, opacity: 0.5, flatShading: true })
+);
+windshield.position.set(0, 1.16, 1.12);
+windshield.rotation.x = 0.55;
+van.add(windshield);
+
+// Side windows
+const vanGlass = new THREE.MeshPhongMaterial({ color: 0x9CBDCC, transparent: true, opacity: 0.45, flatShading: true });
+[[-0.82, 0.75], [0.82, 0.75]].forEach(([x, z_unused]) => {
+  const sw = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 1.8), vanGlass);
+  sw.position.set(x, 1.1, -0.05);
+  van.add(sw);
+});
+
+// Rear door seam
+const seam = box(1.62, 0.78, 0.06, 0xDD7A00);
+seam.position.set(0, 0.57, -1.72);
+van.add(seam);
+
+// Wheels
+function addVanWheel(x, z) {
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.22, 9), mat(0x1A1A1A));
+  tire.rotation.z = Math.PI / 2;
+  tire.position.set(x, 0.28, z);
+  van.add(tire);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.24, 8), mat(0xBBBBBB));
+  rim.rotation.z = Math.PI / 2;
+  rim.position.set(x, 0.28, z);
+  van.add(rim);
+  const hubcap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.25, 6), mat(0xDDDDDD));
+  hubcap.rotation.z = Math.PI / 2;
+  hubcap.position.set(x, 0.28, z);
+  van.add(hubcap);
+}
+addVanWheel( 0.92,  1.1);
+addVanWheel(-0.92,  1.1);
+addVanWheel( 0.92, -1.1);
+addVanWheel(-0.92, -1.1);
+
+// Headlights
+[[-0.55, 0.52, 1.4], [0.55, 0.52, 1.4]].forEach(([x, y, z]) => {
+  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.18, 0.06), mat(0xFFF9C4, 60));
+  hl.position.set(x, y, z);
+  van.add(hl);
+});
+
+// Taillights
+[[-0.6, 0.55, -1.78], [0.6, 0.55, -1.78]].forEach(([x, y, z]) => {
+  const tl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.06), mat(0xFF3333));
+  tl.position.set(x, y, z);
+  van.add(tl);
+});
+
+van.position.set(2.5, 0.1, 4.5);
+van.rotation.y = Math.PI * 0.05;
+scene.add(van);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHERRY BLOSSOM TREES
+// ═══════════════════════════════════════════════════════════════════════════════
+const blossomColors = [0xFFB7C5, 0xFFC5D0, 0xFF96AF, 0xFFCCDA, 0xFFB0C8];
+
+function makeTree(px, pz) {
+  const g = new THREE.Group();
+  // Roots
+  const roots = cyl(0.22, 0.3, 0.3, 5, 0x5C4010);
+  roots.position.y = 0.15;
+  g.add(roots);
+  // Trunk
+  const trunk = cyl(0.1, 0.18, 1.8, 5, 0x7A5018);
+  trunk.position.y = 1.05;
+  g.add(trunk);
+  // Branch 1
+  const b1 = cyl(0.05, 0.08, 1.0, 4, 0x8B6020);
+  b1.position.set(0.3, 1.95, 0.1); b1.rotation.z = -0.4;
+  g.add(b1);
+  const b2 = cyl(0.05, 0.08, 0.9, 4, 0x8B6020);
+  b2.position.set(-0.25, 1.9, 0.05); b2.rotation.z = 0.35;
+  g.add(b2);
+  // Blossom clusters
+  const offsets = [[0, 2.3, 0], [0.55, 2.0, 0.25], [-0.5, 1.95, -0.2],
+                   [0.2, 1.75, -0.5], [-0.3, 1.8, 0.45], [0.1, 2.55, 0.15]];
+  offsets.forEach(([bx, by, bz]) => {
+    const sz = 0.42 + Math.random() * 0.25;
+    const bl = sphere(sz, 5, 4, blossomColors[Math.floor(Math.random() * blossomColors.length)]);
+    bl.position.set(bx, by, bz);
+    g.add(bl);
+  });
+  g.position.set(px, 0.1, pz);
+  return g;
+}
+
+[[-2, -2.5], [1, -4.5], [-3.5, 1.5], [6, -1.5], [-0.5, 6]].forEach(([x, z]) => {
+  scene.add(makeTree(x, z));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FALLING BLOSSOM PETALS
+// ═══════════════════════════════════════════════════════════════════════════════
+const N_PETALS = 280;
+const petalPos = new Float32Array(N_PETALS * 3);
+const petalVel = [];
+for (let i = 0; i < N_PETALS; i++) {
+  petalPos[i*3]   = (Math.random() - 0.5) * 24;
+  petalPos[i*3+1] = Math.random() * 9;
+  petalPos[i*3+2] = (Math.random() - 0.5) * 24;
+  petalVel.push({
+    vy:  -0.018 - Math.random() * 0.016,
+    vx:  (Math.random() - 0.5) * 0.006,
+    vz:  (Math.random() - 0.5) * 0.006,
+    sw:  Math.random() * Math.PI * 2,
+    spd: 0.015 + Math.random() * 0.01
+  });
+}
+const petalGeom = new THREE.BufferGeometry();
+petalGeom.setAttribute('position', new THREE.BufferAttribute(petalPos, 3));
+const petalMat = new THREE.PointsMaterial({
+  color: 0xFFB7C5, size: 0.14, sizeAttenuation: true, transparent: true, opacity: 1.0
+});
+const petals = new THREE.Points(petalGeom, petalMat);
+scene.add(petals);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WOODEN SIGN
+// ═══════════════════════════════════════════════════════════════════════════════
+const signGroup = new THREE.Group();
+const signPost1 = cyl(0.06, 0.07, 1.6, 5, 0x7B5010);
+signPost1.position.set(-0.3, 0.8, 0);
+signGroup.add(signPost1);
+const signPost2 = cyl(0.06, 0.07, 1.6, 5, 0x7B5010);
+signPost2.position.set(0.3, 0.8, 0);
+signGroup.add(signPost2);
+const signPlank = box(1.1, 0.42, 0.12, 0xB07C3A);
+signPlank.position.y = 1.5;
+signGroup.add(signPlank);
+// Wood grain lines
+for (let i = -0.15; i <= 0.15; i += 0.1) {
+  const grain = box(1.08, 0.03, 0.13, 0x9A6C2A);
+  grain.position.set(0, 1.5 + i, 0);
+  signGroup.add(grain);
+}
+const signHat = box(1.25, 0.1, 0.18, 0x8A6030);
+signHat.position.set(0, 1.73, 0);
+signGroup.add(signHat);
+
+signGroup.position.set(1.7, 0.1, 6.0);
+signGroup.rotation.y = 0.15;
+scene.add(signGroup);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VESPER MOTORCYCLE
+// ═══════════════════════════════════════════════════════════════════════════════
+const moto = new THREE.Group();
+
+// Frame
+const frame = box(0.32, 0.22, 1.15, 0x1A237E);
+frame.position.y = 0.5;
+moto.add(frame);
+
+// Engine bulk
+const engine = box(0.36, 0.26, 0.5, 0x222232);
+engine.position.set(0, 0.44, 0.1);
+moto.add(engine);
+
+// Fuel tank
+const tank = box(0.3, 0.2, 0.45, 0x283593);
+tank.position.set(0, 0.66, 0.05);
+moto.add(tank);
+
+// Seat
+const seat = box(0.25, 0.1, 0.55, 0x1A1A2E);
+seat.position.set(0, 0.73, -0.2);
+moto.add(seat);
+
+// Seat pad
+const seatPad = box(0.22, 0.08, 0.5, 0x333355);
+seatPad.position.set(0, 0.78, -0.2);
+moto.add(seatPad);
+
+// Front fork
+const forkL = cyl(0.03, 0.035, 0.7, 4, 0xAAAAAA);
+forkL.position.set(-0.1, 0.56, 0.6); forkL.rotation.x = 0.25;
+moto.add(forkL);
+const forkR = cyl(0.03, 0.035, 0.7, 4, 0xAAAAAA);
+forkR.position.set(0.1, 0.56, 0.6); forkR.rotation.x = 0.25;
+moto.add(forkR);
+
+// Handlebars
+const handlebar = box(0.52, 0.05, 0.05, 0x999999);
+handlebar.position.set(0, 0.82, 0.52);
+moto.add(handlebar);
+const grip1 = box(0.04, 0.06, 0.04, 0x111111);
+grip1.position.set(-0.28, 0.82, 0.52);
+moto.add(grip1);
+const grip2 = grip1.clone();
+grip2.position.set(0.28, 0.82, 0.52);
+moto.add(grip2);
+
+// Headlight
+const hl = sphere(0.1, 5, 4, 0xFFF9C4);
+hl.position.set(0, 0.6, 0.66);
+moto.add(hl);
+
+// Taillight
+const tl = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.05), mat(0xFF3333, 40));
+tl.position.set(0, 0.62, -0.62);
+moto.add(tl);
+
+// Exhaust
+const exhaust = cyl(0.04, 0.03, 0.6, 5, 0x888888);
+exhaust.position.set(0.22, 0.38, -0.2); exhaust.rotation.z = Math.PI / 2;
+moto.add(exhaust);
+
+// Wheels
+function addMotoWheel(zPos) {
+  const torus = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.06, 5, 10), mat(0x1A1A1A));
+  torus.rotation.y = Math.PI / 2;
+  torus.position.set(0, 0.29, zPos);
+  moto.add(torus);
+  // Spokes
+  for (let a = 0; a < 5; a++) {
+    const spoke = cyl(0.012, 0.012, 0.44, 3, 0x888888);
+    spoke.rotation.z = Math.PI / 2;
+    spoke.rotation.y = (a / 5) * Math.PI * 2;
+    spoke.position.set(0, 0.29, zPos);
+    moto.add(spoke);
+  }
+  const hub = cyl(0.06, 0.06, 0.16, 6, 0x777777);
+  hub.rotation.z = Math.PI / 2;
+  hub.position.set(0, 0.29, zPos);
+  moto.add(hub);
+}
+addMotoWheel( 0.58);
+addMotoWheel(-0.58);
+
+// Stand
+const stand = cyl(0.025, 0.025, 0.35, 4, 0x555555);
+stand.position.set(-0.18, 0.16, -0.2); stand.rotation.z = -0.4;
+moto.add(stand);
+
+moto.position.set(-1.2, 0.1, 4.8);
+moto.rotation.y = -0.6;
+scene.add(moto);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STREET LAMPS
+// ═══════════════════════════════════════════════════════════════════════════════
+function makeLamp(px, pz, rot = 0) {
+  const g = new THREE.Group();
+  const post = cyl(0.045, 0.05, 2.8, 5, 0x888888);
+  post.position.y = 1.4;
+  g.add(post);
+  const arm = box(0.55, 0.045, 0.045, 0x888888);
+  arm.position.set(0.28, 2.78, 0);
+  g.add(arm);
+  const head = box(0.22, 0.14, 0.22, 0x444444);
+  head.position.set(0.56, 2.76, 0);
+  g.add(head);
+  const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.16),
+    new THREE.MeshPhongMaterial({ color: 0xFFF8DC, emissive: 0xFFE080, emissiveIntensity: 0.5, flatShading: true }));
+  bulb.position.set(0.56, 2.72, 0);
+  g.add(bulb);
+  g.position.set(px, 0.1, pz);
+  g.rotation.y = rot;
+  return g;
+}
+scene.add(makeLamp(-1.8, 0.5));
+scene.add(makeLamp(-1.8, 4.0));
+scene.add(makeLamp(-1.8, -2.5, Math.PI));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SMALL DETAILS
+// ═══════════════════════════════════════════════════════════════════════════════
+// Flower pots outside store
+[[1.4, -1.5], [4.2, -1.5]].forEach(([x, z]) => {
+  const pot = cyl(0.18, 0.22, 0.3, 6, 0xD2691E);
+  pot.position.set(x, 0.25, z);
+  scene.add(pot);
+  const flower = sphere(0.2, 5, 4, 0xFF6699);
+  flower.position.set(x, 0.5, z);
+  scene.add(flower);
+});
+
+// Bike rack
+const rackBase = box(0.08, 0.5, 0.8, 0x888888);
+rackBase.position.set(4.6, 0.35, 0.8);
+scene.add(rackBase);
+const rackBar = box(0.6, 0.06, 0.06, 0x888888);
+rackBar.position.set(4.6, 0.6, 0.8);
+scene.add(rackBar);
+
+// Stone border around platform
+for (let i = 0; i < 12; i++) {
+  const angle = (i / 12) * Math.PI * 2;
+  const stone = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5 + Math.random() * 0.3, 0.2, 0.4 + Math.random() * 0.2),
+    mat([0xB0A090, 0xA09080, 0x9A8878][i % 3])
+  );
+  stone.position.set(
+    Math.cos(angle) * 11.5,
+    0.1,
+    Math.sin(angle) * 11.5
+  );
+  stone.rotation.y = angle;
+  scene.add(stone);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LIGHTING
+// ═══════════════════════════════════════════════════════════════════════════════
+const ambLight = new THREE.AmbientLight(0xFFFFFF, 0.55);
+scene.add(ambLight);
+
+const sunLight = new THREE.DirectionalLight(0xFFF8E7, 1.3);
+sunLight.position.set(9, 14, 7);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.left = -22;
+sunLight.shadow.camera.right = 22;
+sunLight.shadow.camera.top = 22;
+sunLight.shadow.camera.bottom = -22;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 80;
+sunLight.shadow.bias = -0.001;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0xC5D0E8, 0.35);
+fillLight.position.set(-6, 6, -4);
+scene.add(fillLight);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RAIN PARTICLES
+// ═══════════════════════════════════════════════════════════════════════════════
+const N_RAIN = 1200;
+const rainPos = new Float32Array(N_RAIN * 3);
+const rainVel = [];
+for (let i = 0; i < N_RAIN; i++) {
+  rainPos[i*3]   = (Math.random() - 0.5) * 32;
+  rainPos[i*3+1] = Math.random() * 14;
+  rainPos[i*3+2] = (Math.random() - 0.5) * 32;
+  rainVel.push(-0.18 - Math.random() * 0.1);
+}
+const rainGeom = new THREE.BufferGeometry();
+rainGeom.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainMaterial = new THREE.PointsMaterial({
+  color: 0xADD8E6, size: 0.055, transparent: true, opacity: 0.55, sizeAttenuation: true
+});
+const rainPoints = new THREE.Points(rainGeom, rainMaterial);
+rainPoints.visible = false;
+scene.add(rainPoints);
+
+// Puddle reflections on ground (rainy only)
+const puddleMat = new THREE.MeshPhongMaterial({ color: 0x607D8B, transparent: true, opacity: 0.4, flatShading: false, shininess: 80 });
+const puddle1 = new THREE.Mesh(new THREE.CircleGeometry(1.2, 8), puddleMat);
+puddle1.rotation.x = -Math.PI / 2;
+puddle1.position.set(-0.5, 0.07, 3);
+puddle1.visible = false;
+scene.add(puddle1);
+
+const puddle2 = new THREE.Mesh(new THREE.CircleGeometry(0.8, 7), puddleMat);
+puddle2.rotation.x = -Math.PI / 2;
+puddle2.position.set(3.5, 0.07, 1.5);
+puddle2.visible = false;
+scene.add(puddle2);
+
+// Clouds (cloudy / rainy)
+const cloudGroup = new THREE.Group();
+function addCloud(cx, cy, cz, scale, color) {
+  const blobs = [[0,0,0,1], [0.8,0.2,0,0.8], [-0.7,0.15,0,0.75], [0.3,0.4,0,0.7], [-0.3,0.35,0,0.65]];
+  blobs.forEach(([bx, by, bz, s]) => {
+    const c = new THREE.Mesh(
+      new THREE.SphereGeometry(s * scale, 5, 4),
+      mat(color)
+    );
+    c.position.set(cx + bx * scale * 1.2, cy + by * scale, cz + bz * scale);
+    cloudGroup.add(c);
+  });
+}
+addCloud(-3, 9, -6, 1.4, 0xECECEC);
+addCloud(3, 10, -8, 1.2, 0xEAEAEA);
+addCloud(-6, 8.5, -3, 1.0, 0xEEEEEE);
+addCloud(6, 9.5, -5, 1.3, 0xE8E8E8);
+cloudGroup.visible = false;
+scene.add(cloudGroup);
+
+// Dark rain clouds
+const darkCloudGroup = new THREE.Group();
+addCloud(-4, 9, -5, 1.5, 0x9E9E9E);
+addCloud(2, 10.5, -7, 1.3, 0x8E8E8E);
+addCloud(-7, 9, -2, 1.1, 0x969696);
+addCloud(5, 8.8, -3, 1.4, 0x8A8A8A);
+addCloud(0, 10, -4, 1.6, 0x929292);
+darkCloudGroup.visible = false;
+scene.add(darkCloudGroup);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WEATHER SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+const W = {
+  sunny: {
+    sky: 0x87CEEB, fogColor: 0x87CEEB, fogNear: 22, fogFar: 65,
+    ambInt: 0.55, ambColor: 0xFFFFFF,
+    sunInt: 1.3, sunColor: 0xFFF8E7,
+    rain: false, puddles: false, clouds: false, darkClouds: false,
+    petalAlpha: 1.0,
+  },
+  cloudy: {
+    sky: 0xA0AABA, fogColor: 0xA0AABA, fogNear: 14, fogFar: 42,
+    ambInt: 0.75, ambColor: 0xCCCCDD,
+    sunInt: 0.45, sunColor: 0xD8D8E8,
+    rain: false, puddles: false, clouds: true, darkClouds: false,
+    petalAlpha: 0.55,
+  },
+  rainy: {
+    sky: 0x4A5F6A, fogColor: 0x4E6070, fogNear: 8, fogFar: 30,
+    ambInt: 0.45, ambColor: 0xAABBCC,
+    sunInt: 0.15, sunColor: 0xB0C0CC,
+    rain: true, puddles: true, clouds: false, darkClouds: true,
+    petalAlpha: 0.15,
+  }
+};
+
+function setWeather(name) {
+  const s = W[name];
+  renderer.setClearColor(s.sky);
+  scene.fog.color.setHex(s.fogColor);
+  scene.fog.near = s.fogNear;
+  scene.fog.far  = s.fogFar;
+
+  ambLight.intensity = s.ambInt;
+  ambLight.color.setHex(s.ambColor);
+  sunLight.intensity = s.sunInt;
+  sunLight.color.setHex(s.sunColor);
+
+  rainPoints.visible = s.rain;
+  puddle1.visible    = s.puddles;
+  puddle2.visible    = s.puddles;
+  cloudGroup.visible     = s.clouds;
+  darkCloudGroup.visible = s.darkClouds;
+
+  petalMat.opacity = s.petalAlpha;
+  petals.visible = s.petalAlpha > 0.05;
+
+  document.querySelectorAll('.wbtn').forEach(b => b.classList.remove('active'));
+  document.getElementById('w-' + name).classList.add('active');
+}
+
+setWeather('sunny');
+renderer.setClearColor(0x87CEEB);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════════════════════════
+let tick = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  tick++;
+  controls.update();
+
+  // Petal animation
+  const pp = petals.geometry.attributes.position.array;
+  for (let i = 0; i < N_PETALS; i++) {
+    const v = petalVel[i];
+    v.sw += v.spd;
+    pp[i*3]   += v.vx + Math.sin(v.sw) * 0.005;
+    pp[i*3+1] += v.vy;
+    pp[i*3+2] += v.vz + Math.cos(v.sw) * 0.004;
+    if (pp[i*3+1] < 0.0) {
+      pp[i*3]   = (Math.random() - 0.5) * 24;
+      pp[i*3+1] = 8.5;
+      pp[i*3+2] = (Math.random() - 0.5) * 24;
+    }
+  }
+  petals.geometry.attributes.position.needsUpdate = true;
+
+  // Rain animation
+  if (rainPoints.visible) {
+    const rp = rainPoints.geometry.attributes.position.array;
+    for (let i = 0; i < N_RAIN; i++) {
+      rp[i*3+1] += rainVel[i];
+      rp[i*3]   += 0.025;
+      if (rp[i*3+1] < 0) {
+        rp[i*3]   = (Math.random() - 0.5) * 32;
+        rp[i*3+1] = 14;
+        rp[i*3+2] = (Math.random() - 0.5) * 32;
+      }
+    }
+    rainPoints.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // Clouds drift slowly
+  cloudGroup.position.x = Math.sin(tick * 0.0008) * 1.5;
+  darkCloudGroup.position.x = Math.sin(tick * 0.0006 + 1.0) * 1.2;
+
+  // Gentle Fuji float
+  fuji.position.y = Math.sin(tick * 0.004) * 0.06;
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

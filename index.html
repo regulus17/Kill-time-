@@ -210,45 +210,35 @@ const fujiBodyGeo = new THREE.LatheGeometry(fujiPts, 10);
 const fujiBody = new THREE.Mesh(fujiBodyGeo, mat(0x6E5E4E));
 fujiBody.castShadow = true; fuji.add(fujiBody);
 
-// Upper dark volcanic zone overlay
-const upperPts = [
-  new THREE.Vector2(3.0, 6.8),
-  new THREE.Vector2(2.1, 7.8),
-  new THREE.Vector2(1.25, 8.8),
-  new THREE.Vector2(0.6, 9.55),
-  new THREE.Vector2(0.2, 10.1),
+// Snow — LatheGeometry using the EXACT same profile points as the mountain body
+// so the snow surface sits flush on the mountain, zero clipping.
+// Starts at y=6.0 (snow line), covers summit.
+const snowPts = [
+  new THREE.Vector2(3.8, 5.7),   // snow line (matches body profile exactly)
+  new THREE.Vector2(2.8, 7.0),
+  new THREE.Vector2(1.8, 8.1),
+  new THREE.Vector2(1.0, 9.0),
+  new THREE.Vector2(0.42, 9.7),
+  new THREE.Vector2(0.14, 10.2),
 ];
-const upperZone = new THREE.Mesh(new THREE.LatheGeometry(upperPts, 10), mat(0x5C5248));
-upperZone.position.y = 0.03; fuji.add(upperZone);
+const snowMesh = new THREE.Mesh(new THREE.LatheGeometry(snowPts, 10), mat(0xF2F2F2));
+snowMesh.castShadow = true;
+// Tiny Y-offset so snow renders on top of body (no z-fighting)
+snowMesh.position.y = 0.02;
+fuji.add(snowMesh);
 
-// Snow cap (white cone overlay, covers upper ~30%)
-const snowCap = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.15, 2.2, 3.2, 10),
-  mat(0xF4F4F4)
-);
-snowCap.position.y = 8.8; fuji.add(snowCap);
-
-// Snow band (wider, softer lower edge)
-const snowBand = new THREE.Mesh(
-  new THREE.CylinderGeometry(2.0, 2.85, 0.55, 10),
-  mat(0xE8E8E8)
-);
-snowBand.position.y = 7.4; fuji.add(snowBand);
-
-// Snow streaks down the ridges
-for (let i = 0; i < 6; i++) {
-  const ang = (i / 6) * Math.PI * 2 + 0.18;
-  const streak = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.06, 0.22, 3.0, 4),
-    mat(0xEEEEEE)
-  );
-  const rx = Math.sin(ang) * 1.6;
-  const rz = Math.cos(ang) * 1.6;
-  streak.position.set(rx, 6.9, rz);
-  streak.rotation.z = -Math.sin(ang) * 0.52;
-  streak.rotation.x =  Math.cos(ang) * 0.52;
-  fuji.add(streak);
-}
+// Upper gray-rock zone — same trick, exact profile, slim offset
+const upperPts = [
+  new THREE.Vector2(5.0, 4.4),
+  new THREE.Vector2(3.8, 5.7),
+  new THREE.Vector2(2.8, 7.0),
+];
+const upperZoneMat = mat(0x5C5248);
+upperZoneMat.polygonOffset = true;
+upperZoneMat.polygonOffsetFactor = -1;
+upperZoneMat.polygonOffsetUnits = -1;
+const upperZone = new THREE.Mesh(new THREE.LatheGeometry(upperPts, 10), upperZoneMat);
+upperZone.position.y = 0.01; fuji.add(upperZone);
 
 // Crater ring
 const crater = cyl(0.22, 0.18, 0.18, 8, 0x3A3028);
@@ -390,14 +380,8 @@ function addVanWheel(x,z) {
 van.position.set(2.5, 0.1, 4.5); van.rotation.y = Math.PI*0.05; scene.add(van);
 
 // ─── RIVER ────────────────────────────────────────────────────────────────────
-const riverGeo = new THREE.PlaneGeometry(22, 2.2, 18, 4);
-// Gently bend river in Z direction to give slight S-curve
-const rv = riverGeo.attributes.position;
-for (let i = 0; i < rv.count; i++) {
-  const x = rv.getX(i);
-  rv.setY(i, rv.getY(i) + Math.sin(x * 0.18) * 0.25);
-}
-riverGeo.computeVertexNormals();
+// Flat river plane — no vertex deformation, stays within its banks
+const riverGeo = new THREE.PlaneGeometry(22, 2.0, 1, 1);
 
 const riverMat = new THREE.MeshPhongMaterial({
   color: 0x4AADCA, transparent: true, opacity: 0.82, flatShading: true, shininess: 130
@@ -408,14 +392,14 @@ riverMesh.position.set(0, 0.07, -3.5);
 scene.add(riverMesh);
 
 // River bed (pebble gray visible under water)
-const riverBed = box(22, 0.05, 2.4, 0x7A9A9A);
+const riverBed = box(22, 0.05, 2.0, 0x7A9A9A);
 riverBed.position.set(0, 0.04, -3.5); scene.add(riverBed);
 
 // River banks — raised earth edges
 const bank1 = box(22, 0.28, 0.5, 0x9A8A6A);
-bank1.position.set(0, 0.14, -2.3); scene.add(bank1);
+bank1.position.set(0, 0.14, -2.55); scene.add(bank1);
 const bank2 = box(22, 0.28, 0.5, 0x9A8A6A);
-bank2.position.set(0, 0.14, -4.7); scene.add(bank2);
+bank2.position.set(0, 0.14, -4.45); scene.add(bank2);
 
 // Small river rocks
 [[-3.5,0.12,-2.8],[1.2,0.12,-4.2],[-0.8,0.12,-3.1],[2.5,0.12,-3.9]].forEach(([x,y,z]) => {

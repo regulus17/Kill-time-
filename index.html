@@ -189,12 +189,12 @@ for (let i = 0; i < 12; i++) {
 }
 
 // ─── CROSS INTERSECTION ───────────────────────────────────────────────────────
-const road = box(3.2, 0.08, 11, 0x555566);
-road.position.set(-0.5, 0.06, 2); scene.add(road);
+const road = box(3.2, 0.08, 8.7, 0x555566);
+road.position.set(-0.5, 0.06, 3.15); scene.add(road);
 const crossRoad = box(16, 0.085, 3.2, 0x555566);
 crossRoad.position.set(-0.5, 0.062, 1.0); scene.add(crossRoad);
 // N-S dashes (skip intersection zone z ≈ -0.6 to 2.6)
-for (let z = -3.5; z <= 7; z += 1.5) {
+for (let z = 3.2; z <= 7; z += 1.5) {
   if (z > -0.6 && z < 2.6) continue;
   const dash = box(0.12, 0.09, 0.75, 0xEEEE88);
   dash.position.set(-0.5, 0.07, z); scene.add(dash);
@@ -205,9 +205,9 @@ for (let x = -7; x <= 6; x += 1.5) {
   const dash = box(0.75, 0.09, 0.12, 0xEEEE88);
   dash.position.set(x, 0.075, 1.0); scene.add(dash);
 }
-const kerb1 = box(0.18, 0.14, 11, 0xCCBBAA); kerb1.position.set(1.5, 0.08, 2); scene.add(kerb1);
-const kerb2 = box(0.18, 0.14, 11, 0xCCBBAA); kerb2.position.set(-2.5, 0.08, 2); scene.add(kerb2);
-const sidewalk = box(2.0, 0.1, 11, 0xC8BA9A); sidewalk.position.set(3.0, 0.08, 2); scene.add(sidewalk);
+const kerb1 = box(0.18, 0.14, 8.7, 0xCCBBAA); kerb1.position.set(1.5, 0.08, 3.15); scene.add(kerb1);
+const kerb2 = box(0.18, 0.14, 8.7, 0xCCBBAA); kerb2.position.set(-2.5, 0.08, 3.15); scene.add(kerb2);
+const sidewalk = box(2.0, 0.1, 8.7, 0xC8BA9A); sidewalk.position.set(3.0, 0.08, 3.15); scene.add(sidewalk);
 // Crosswalk stripes N/S of intersection
 [-0.55, 2.55].forEach(cz => {
   for (let cx = -1.6; cx <= 0.7; cx += 0.38) {
@@ -439,7 +439,7 @@ const stopLine = box(5.4, 0.09, 0.1, 0xEEEEEE); stopLine.position.set(2.8, 0.09,
 
 
 // ─── HEART-SHAPED LAKE ────────────────────────────────────────────────────────
-const hs = 0.22; // heart scale
+const hs = 0.28; // heart scale
 function heartPoints(scale) {
   const pts = [];
   for (let i = 0; i <= 80; i++) {
@@ -458,19 +458,19 @@ function makeHeartShape(scale) {
   return shape;
 }
 // Shore (earth) — rotation.x = -π/2 so ShapeGeometry normal points UP (+Y)
-const lakeShore = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.22), 10), mat(0x9A8A6A));
-lakeShore.rotation.x = -Math.PI / 2; lakeShore.position.set(0, 0.02, -8); scene.add(lakeShore);
+const lakeShore = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.12), 12), mat(0x9A8A6A));
+lakeShore.rotation.x = -Math.PI / 2; lakeShore.position.set(0, 0.07, -8); scene.add(lakeShore);
 // Bed
-const lakeBed = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.05), 10), mat(0x7A9A9A));
-lakeBed.rotation.x = -Math.PI / 2; lakeBed.position.set(0, 0.04, -8); scene.add(lakeBed);
+const lakeBed = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs*1.03), 12), mat(0x7A9A9A));
+lakeBed.rotation.x = -Math.PI / 2; lakeBed.position.set(0, 0.08, -8); scene.add(lakeBed);
 // Water surface
 const lakeMat = new THREE.MeshPhongMaterial({
   color: 0x3FA8D0, transparent: true, opacity: 0.88, flatShading: true, shininess: 150
 });
-const lakeMesh = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs), 10), lakeMat);
-lakeMesh.rotation.x = -Math.PI / 2; lakeMesh.position.set(0, 0.07, -8); scene.add(lakeMesh);
-// Lakeside rocks
-[[-4.0,0.12,-7.4],[3.5,0.12,-9.0],[-0.8,0.12,-5.0],[2.2,0.12,-6.5],[-2.5,0.12,-10.5],[1.0,0.12,-10.8]].forEach(([x,y,z]) => {
+const lakeMesh = new THREE.Mesh(new THREE.ShapeGeometry(makeHeartShape(hs), 12), lakeMat);
+lakeMesh.rotation.x = -Math.PI / 2; lakeMesh.position.set(0, 0.095, -8); scene.add(lakeMesh);
+// Lakeside rocks (on the shore ring)
+[[5.1,0.12,-8.6],[-5.1,0.12,-8.9],[-2.5,0.12,-4.6],[2.6,0.12,-11.4],[-4.2,0.12,-10.5],[-0.9,0.12,-2.9]].forEach(([x,y,z]) => {
   const rock = sph(0.20+Math.random()*0.12, 5, 4, 0x8A9090);
   rock.scale.y = 0.6; rock.position.set(x,y,z); scene.add(rock);
 });
@@ -511,8 +511,8 @@ function makeSwan(px, pz, ry) {
   return g;
 }
 
-const swan1 = makeSwan(-0.9, -7.5,  0.9); swan1._isSwan = true; swan1._swanPhase = 0; swan1.scale.set(0.55, 0.55, 0.55);
-const swan2 = makeSwan( 1.0, -8.8, -0.5); swan2._isSwan = true; swan2._swanPhase = Math.PI; swan2.scale.set(0.55, 0.55, 0.55);
+const swan1 = makeSwan(-1.4, -7.2,  0.9); swan1._isSwan = true; swan1._swanPhase = 0; swan1.scale.set(0.55, 0.55, 0.55);
+const swan2 = makeSwan( 1.6, -8.6, -0.5); swan2._isSwan = true; swan2._swanPhase = Math.PI; swan2.scale.set(0.55, 0.55, 0.55);
 scene.add(swan1); scene.add(swan2);
 
 // ─── CHERRY BLOSSOM TREES (improved, along river banks) ───────────────────────
@@ -579,8 +579,8 @@ function makeTree(px, pz) {
 
 // Cherry trees around the heart lake (center 0, -8)
 [
-  [-4.5,-7.2],[-4.0,-10.5],[-2.0,-11.5],[0,-12.5],[2.0,-11.5],[4.0,-10.5],[4.5,-7.2],
-  [3.2,-5.5],[0.8,-5.0],[-0.8,-5.0],[-3.2,-5.5],[0,-13.0],
+  [-3.0,-4.3],[-4.9,-6.2],[-6.3,-9.0],[-5.6,-10.4],[0,-11.3],
+  [3.0,-4.3],[4.9,-6.2],[6.3,-9.0],[5.6,-10.4],[1.8,-3.6],[-1.7,-3.3],
 ].forEach(([x,z]) => scene.add(makeTree(x, z)));
 
 // ─── WOODEN SIGN ──────────────────────────────────────────────────────────────
@@ -638,7 +638,7 @@ function makeLamp(px,pz,rot=0) {
   bulb.position.set(0.56,2.72,0); g.add(bulb);
   g.position.set(px,0.1,pz); g.rotation.y=rot; return g;
 }
-scene.add(makeLamp(-1.8,0.5)); scene.add(makeLamp(-1.8,4.0)); scene.add(makeLamp(-1.8,-2.5,Math.PI));
+scene.add(makeLamp(-1.8,4.0)); scene.add(makeLamp(-1.8,6.5));
 
 // ─── SMALL DETAILS ────────────────────────────────────────────────────────────
 [[1.4,-1.5],[4.2,-1.5]].forEach(([x,z]) => {
@@ -788,7 +788,7 @@ function animate() {
 
   // Swans gently bob
   scene.children.forEach(c => {
-    if (c._isSwan) c.position.y = 0.03 + Math.sin(tick * 0.03 + c._swanPhase) * 0.025;
+    if (c._isSwan) c.position.y = 0.08 +Math.sin(tick * 0.03 + c._swanPhase) * 0.025;
   });
 
   renderer.render(scene, camera);
